@@ -4,10 +4,7 @@ import random
 import time
 import pandas as pd
 import requests
-# import re
 from bs4 import BeautifulSoup
-import sqlite3
-from sqlite3 import Error
 import traceback
 import sys
 
