@@ -27,6 +27,7 @@ Path_cache = BasePath + '\\Cache\\'
 
 
 def log_print(message):
+    # Append the log message to the Log.txt file and print it
     with open(File_path_log, 'a', encoding='utf-8') as file:
         file.write(message + '\n')
         file.flush()
@@ -34,17 +35,20 @@ def log_print(message):
 
 
 def exception():
+    # Log and print the traceback of the exception
     error = traceback.format_exc()
     exception_type, exception_object, exception_traceback = sys.exc_info()
     log_print(error)
 
 
 def convertCSVExcel(File_path_CSV, File_path_EXL):
+    # Convert CSV file to Excel file
     df = pd.read_csv(File_path_CSV, encoding='utf-8', low_memory=False)
     df.to_excel(File_path_EXL, index=False)
 
 
 def duplicate(File_path):
+    # Remove duplicate rows from the Excel file
     try:
         data = pd.read_excel(File_path)
         data_file = data.drop_duplicates()
@@ -55,18 +59,20 @@ def duplicate(File_path):
 
 def individual_data(profile_url, p_index, page):
     try:
-        # time.sleep(5)
-
+        # time.sleep(5)     #Remove comment if it is facing server error
         indi_data = []
+        # Check if the HTML page is already cached
         if os.path.exists('{}Profile_{}_page{}.html'.format(Path_cache, p_index, page)):
             with open('{}Profile_{}_page{}.html'.format(Path_cache, p_index, page), 'r', encoding='utf-8') as fh:
                 individual_soup = BeautifulSoup(fh.read(), 'html.parser')
         else:
-            individual_obj = requests.get(profile_url, timeout=100)
+            # Fetch the individual profile page and cache it
+            individual_obj = requests.get(profile_url, timeout=100)     # Use Retry mechanism for request if face any error in this request as Line 188
             with open('{}Profile_{}_page{}.html'.format(Path_cache, p_index, page), 'w', encoding='utf-8') as fh:
                 fh.write(individual_obj.content.decode('utf-8'))
             individual_soup = BeautifulSoup(individual_obj.content, 'html.parser')
 
+        # Extract relevant information from the individual profile page
         expertise_text = ''
         research_text = ''
         if individual_soup.find('div', class_='section personal'):
@@ -94,7 +100,7 @@ def individual_data(profile_url, p_index, page):
         try:
             individual_appointment = individual_soup.find('div', id='Appointments')
             phone_tag = individual_appointment.find('div', class_='col-4 standard').find('div', class_='phone').get_text(separator=' ', strip=True)
-        except AttributeError:
+        except AttributeError:      # Handle AttributeError if element is not found
             pass
         try:
             individual_location = individual_soup.find('div', id='Locations')
@@ -103,9 +109,19 @@ def individual_data(profile_url, p_index, page):
         except AttributeError:
             pass
         try:
-            education_list = individual_soup.find('div', id='Education').find('div', class_='restrict')
-            education_list = education_list.find_all('li')
-            education_tag = '; '.join([item.get_text(strip=True) for item in education_list])
+            education_section = individual_soup.find('div', id='Education')
+            education_list = education_section.find_all('h3', string=['Degrees', 'Residencies', 'Fellowships'])
+            education_tag = ''
+            
+            for heading in education_list:
+                ul = heading.find_next_sibling('ul')
+                lis = ul.find_all('li')
+                for li in lis:
+                    institute = li.get_text(strip=True).split(';')[-1].strip()
+                    education_tag += institute + '; '
+            
+            education_tag = education_tag.rstrip('; ')
+            
         except AttributeError:
             pass
         
@@ -129,21 +145,19 @@ def individual_data(profile_url, p_index, page):
 if __name__ == '__main__':
     # Create directories if they don't exist
     directories = [
-        BasePath + '\\Log',
-        BasePath + '\\OP',
-        BasePath + '\\OPcsv',
-        Path_cache
+        BasePath + '\\Log',         # Log directory
+        BasePath + '\\OP',          # OP directory
+        BasePath + '\\OPcsv',       # OPcsv directory
+        Path_cache                  # Cache directory
     ]
 
     for directory in directories:
         if not os.path.exists(directory):
             os.makedirs(directory)
 
-    First_run = True
+    First_run = True        # Set it False if you do not want to remove files on next run
     if First_run:
-        # if not os.path.exists(File_path_log_Run_Flag):
-        #     with open(File_path_log_Run_Flag, "a", encoding='utf-8') as f:
-        #         f.write("")
+        # Remove the existing CSV file
         if os.path.isfile(File_path_CSV):
             os.remove(File_path_CSV)
         if os.path.exists(File_path_log):
@@ -153,9 +167,10 @@ if __name__ == '__main__':
     with open(File_path_CSV, "a", newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         if f.tell() == 0:
+            # Write the headers to the CSV file if it's empty
             writer.writerow(headers)
             
-
+    # List of user agents to prevant detecting the device and browser
     user_agents = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:53.0) Gecko/20100101 Firefox/53.0",
@@ -180,9 +195,10 @@ if __name__ == '__main__':
     retry_delay = 2
 
     try:
-        outerRetry = 1
+        outerRetry = 1      # Retry mechanism for requests
         while outerRetry <= retry_attempts:
             try:
+                # Get the content of the first page to extract the last page number
                 obj_temp = requests.get(Search_url.format(1), headers=Headers, timeout=200)
                 break
             except Exception as e:
@@ -201,16 +217,18 @@ if __name__ == '__main__':
 
         paginate_element = soup_temp.find('ol', class_='paginate')
         if paginate_element is not None:
+            # Get the last page number from the pagination element
             last_page_element = paginate_element.find_all('a', class_='page-button')[-1]
             last_page_number = int(last_page_element['data-page'])
 
         for index in range(1, last_page_number + 1):
-            # time.sleep(10)
+            # time.sleep(10)     # Remove comment if it is facing server error
             user_agent = random.choice(user_agents)
             Headers = {'User-Agent': user_agent}
             innerRetry = 1
             while innerRetry <= retry_attempts:
                 try:
+                    # Get the content of each page
                     obj = requests.get(Search_url.format(index), headers=Headers, timeout=200)
                     break
                 except Exception as e:
@@ -238,6 +256,9 @@ if __name__ == '__main__':
         exception()
 
     finally:
+        # Convert the CSV file to Excel format
         convertCSVExcel(File_path_CSV, File_path)
+        # Remove duplicate entries in the Excel file
         duplicate(File_path)
+        
         exit(0)
