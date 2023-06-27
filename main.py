@@ -1,7 +1,6 @@
 import csv
 import os
 import random
-import string
 import time
 import pandas as pd
 import requests
@@ -11,10 +10,6 @@ import sqlite3
 from sqlite3 import Error
 import traceback
 import sys
-
-# from requests.adapters import HTTPAdapter
-# from requests.exceptions import RequestException
-# from urllib3.exceptions import ConnectTimeoutError
 
 
 # BasePath = 'F:\\WebScrapping\\hopkinsmedicine'
@@ -30,6 +25,8 @@ File_path_error = BasePath + '\\Error\\Error.xlsx'
 File_path_log = BasePath + '\\Log\\Log.txt'
 File_path_log_index_LetterE1 = BasePath + '\\Log\\Log_Index.txt'
 File_path_log_Run_Flag = BasePath + '\\Log\\Run_Flag.txt'
+######### Cache #########
+Path_cache = BasePath + '\\Cache\\'
 
 
 def log_print(message):
@@ -42,48 +39,92 @@ def log_print(message):
 def exception():
     error = traceback.format_exc()
     exception_type, exception_object, exception_traceback = sys.exc_info()
+    log_print(error)
 
 
-def individual_data(profile_url):
+def convertCSVExcel(File_path_CSV, File_path_EXL):
+    df = pd.read_csv(File_path_CSV, encoding='utf-8', low_memory=False)
+    df.to_excel(File_path_EXL, index=False)
+
+
+def duplicate(File_path):
     try:
-        time.sleep(5)
-        indi_data = []
-        individual_obj = requests.get(profile_url, timeout=100)
-        individual_soup = BeautifulSoup(individual_obj.content, 'html.parser')
+        data = pd.read_excel(File_path)
+        data_file = data.drop_duplicates()
+        data_file.to_excel(File_path, index=False)
+    except:
+        pass
 
+
+def individual_data(profile_url, p_index, page):
+    try:
+        # time.sleep(5)
+
+        indi_data = []
+        if os.path.exists('{}Profile_{}.html'.format(Path_cache, p_index, page)):
+            with open('{}Profile_{}_page{}.html'.format(Path_cache, p_index, page), 'r', encoding='utf-8') as fh:
+                individual_soup = BeautifulSoup(fh.read(), 'html.parser')
+        else:
+            individual_obj = requests.get(profile_url, timeout=100)
+            with open('{}Profile_{}.html'.format(Path_cache, p_index, page), 'w', encoding='utf-8') as fh:
+                fh.write(individual_obj.content.decode('utf-8'))
+            individual_soup = BeautifulSoup(individual_obj.content, 'html.parser')
+
+        expertise_text = ''
+        research_text = ''
         if individual_soup.find('div', class_='section personal'):
             individual_details = individual_soup.find('div', class_='section personal')
-            name_tag = individual_details.find('div', class_='name').find('h1').text.strip() if individual_details.find('div', class_='name').find('h1') else '-'
-            title_tag = individual_details.find('ul', class_='titles').text.strip() if individual_details.find('ul', class_='titles') else '-'
-            gender_tag = individual_details.find('div', class_='gender').text.strip() if individual_details.find('div', class_='gender') else '-'
-            expertise_tag = individual_details.find('div', class_='expertise').find('span', class_='read-more-wrapper').get_text(separator=' ', strip=True) if individual_details.find('div', class_='expertise').find('span', class_='read-more-wrapper') else '-'
-            expertise_tag = expertise_tag.replace('...read less', '')
-            research_tag = individual_details.find('div', class_='research').find('span', class_='read-more-wrapper').get_text(separator=' ', strip=True) if individual_details.find('div', class_='research').find('span', class_='read-more-wrapper') else '-'
-            research_tag = research_tag.replace('...read more', '')
+            name_tag = individual_details.find('div', class_='name').find('h1').text.strip() if individual_details.find('div', class_='name').find('h1') else ''
+            title_tag = individual_details.find('ul', class_='titles').text.strip() if individual_details.find('ul', class_='titles') else ''
+            gender_tag = individual_details.find('div', class_='gender').text.strip() if individual_details.find('div', class_='gender') else ''
+            try:
+                if individual_details.find('div', class_='expertise').find('h2'):
+                    expertise_tag = individual_details.find('div', class_='expertise').find('h2')
+                    expertise_text = expertise_tag.find_next_sibling('p').get_text(strip=True).replace('...read more', '')
+            except AttributeError:
+                pass
+            try:
+                if individual_details.find('div', class_='research').find('h2'):
+                    research_tag = individual_details.find('div', class_='research').find('h2')
+                    research_text = research_tag.find_next_sibling('p').get_text(strip=True).replace('...read more', '')
+            except AttributeError:
+                pass
 
-        if individual_soup.find('div', id='Appointments'):
+                    
+        phone_tag = ''
+        location = ''
+        education_tag = ''
+        try:
             individual_appointment = individual_soup.find('div', id='Appointments')
-            phone_tag = individual_appointment.find('div', class_='col-4 standard').find('div', class_='phone').get_text(separator=' ', strip=True) if individual_appointment.find('div', class_='col-4 standard').find('div', class_='phone') else '-'
-
-        if individual_soup.find('div', id='Locations'):
+            phone_tag = individual_appointment.find('div', class_='col-4 standard').find('div', class_='phone').get_text(separator=' ', strip=True)
+        except AttributeError:
+            pass
+        try:
             individual_location = individual_soup.find('div', id='Locations')
-            location_tag = individual_location.find('div', class_='address').text.strip() if individual_location.find('div', class_='address') else '-'
-            location_tag = location_tag.replace('map', '')
-        # if individual_soup.find('div', id='Education'):
-        #     individual_location = individual_soup.find('div', id='Education')
-        #     education_tag = individual_location.find('div', class_='name').find('h1') if individual_location.find('div', class_='name').find('h1')
+            location_tag = individual_location.find('div', class_='address')
+            location = location_tag.get_text(separator='\n', strip=True).replace('map', '').strip()
+        except AttributeError:
+            pass
+        try:
+            education_list = individual_soup.find('div', id='Education').find('div', class_='restrict')
+            education_list = education_list.find_all('li')
+            education_tag = '; '.join([item.get_text(strip=True) for item in education_list])
+        except AttributeError:
+            pass
+        
         indi_data.append(name_tag)
         indi_data.append(title_tag)
         indi_data.append(gender_tag)
-        indi_data.append(expertise_tag)
-        indi_data.append(research_tag)
+        indi_data.append(expertise_text)
+        indi_data.append(research_text)
         indi_data.append(phone_tag)
-        indi_data.append(location_tag)
-        # indi_data.append(education_tag)
+        indi_data.append(location)
+        indi_data.append(education_tag)
 
         with open(File_path_CSV, 'a', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
             writer.writerow(indi_data)
+        log_print(f'Completed: {name_tag}     {Profile_url}')
     except:
         exception()
 
@@ -93,7 +134,8 @@ if __name__ == '__main__':
     directories = [
         BasePath + '\\Log',
         BasePath + '\\OP',
-        BasePath + '\\OPcsv'
+        BasePath + '\\OPcsv',
+        Path_cache
     ]
 
     for directory in directories:
@@ -115,6 +157,7 @@ if __name__ == '__main__':
         writer = csv.writer(f)
         if f.tell() == 0:
             writer.writerow(headers)
+            
 
     user_agents = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
@@ -141,14 +184,13 @@ if __name__ == '__main__':
 
     try:
         outerRetry = 1
-        # error_message_flag = False
         while outerRetry <= retry_attempts:
             try:
                 obj_temp = requests.get(Search_url.format(1), headers=Headers, timeout=200)
                 break
             except Exception as e:
                 log_print(f"Error occurred")
-                # exception()
+                Headers = {'User-Agent': user_agent}
                 delay = retry_delay * (2 ** outerRetry)
                 log_print(f'Retrying in {delay} seconds...RETRY: {outerRetry}')
                 time.sleep(delay)
@@ -158,22 +200,15 @@ if __name__ == '__main__':
             exit(1)
 
         soup_temp = BeautifulSoup(obj_temp.content, 'html.parser')
+        last_page_number = 1
 
-        # error_message = soup_temp.find('div', class_='alert alert-danger')
-        # if error_message:
-        #     error_message_flag = True
-        # break
-
-        if len(soup_temp.find_all('ol', class_='paginate')) > 0:
-            last_page_element = soup_temp.find_all('a', class_='page-button')[-2]
-            last_page_number = int(last_page_element.get_text(strip=True))
-            del obj_temp
-            del soup_temp
-        else:
-            last_page_number = 1
+        paginate_element = soup_temp.find('ol', class_='paginate')
+        if paginate_element is not None:
+            last_page_element = paginate_element.find_all('a', class_='page-button')[-1]
+            last_page_number = int(last_page_element['data-page'])
 
         for index in range(1, last_page_number + 1):
-            time.sleep(10)
+            # time.sleep(10)
             user_agent = random.choice(user_agents)
             Headers = {'User-Agent': user_agent}
             innerRetry = 1
@@ -183,7 +218,7 @@ if __name__ == '__main__':
                     break
                 except Exception as e:
                     log_print(f"Error occurred")
-                    # exception()
+                    Headers = {'User-Agent': user_agent}
                     delay = retry_delay * (2 ** innerRetry)
                     log_print(f'Retrying in {delay} seconds...RETRY: {innerRetry}')
                     time.sleep(delay)
@@ -196,14 +231,16 @@ if __name__ == '__main__':
             res = soup.find('div', class_='faculty-results-wrapper').find('ul', class_='faculty-results-list')
             profiles = res.find_all('div', class_='main-wrap')
             for profile in profiles:
+                profile_index = profiles.index(profile)
                 Profile_url = Base_url + profile.find('a', href=True).get('href')
-                individual_data(Profile_url)
+                individual_data(Profile_url, profile_index, index)
+            log_print(f"\n---------------------------------- Page {index} Completed out of {last_page_number} ----------------------------------\n")
+        log_print("\nScript Completed")
+        
     except:
         exception()
 
     finally:
-        # data = pd.read_excel(File_path)
-        # data_file = data.drop_duplicates()
-        # data_file.to_excel(File_path, index=False)
-        log_print("\nComplete")
-        exit()
+        convertCSVExcel(File_path_CSV, File_path)
+        duplicate(File_path)
+        exit(0)
