@@ -61,12 +61,12 @@ def individual_data(profile_url, p_index, page):
         # time.sleep(5)
 
         indi_data = []
-        if os.path.exists('{}Profile_{}.html'.format(Path_cache, p_index, page)):
+        if os.path.exists('{}Profile_{}_page{}.html'.format(Path_cache, p_index, page)):
             with open('{}Profile_{}_page{}.html'.format(Path_cache, p_index, page), 'r', encoding='utf-8') as fh:
                 individual_soup = BeautifulSoup(fh.read(), 'html.parser')
         else:
             individual_obj = requests.get(profile_url, timeout=100)
-            with open('{}Profile_{}.html'.format(Path_cache, p_index, page), 'w', encoding='utf-8') as fh:
+            with open('{}Profile_{}_page{}.html'.format(Path_cache, p_index, page), 'w', encoding='utf-8') as fh:
                 fh.write(individual_obj.content.decode('utf-8'))
             individual_soup = BeautifulSoup(individual_obj.content, 'html.parser')
 
